@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Instant Delivery Quote</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; max-width: 980px; }
+    h1 { margin: 0 0 6px; }
+    .sub { color: #555; margin: 0 0 18px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 14px; }
+    label { display: block; font-size: 13px; margin-bottom: 6px; color: #333; }
+    input, select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; font-size: 14px; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .row > * { flex: 1; }
+    .checks label { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 14px; }
+    .checks input { width: auto; }
+    .btn { cursor: pointer; padding: 12px 14px; border: 0; border-radius: 12px; font-weight: 700; }
+    .btn.primary { background: #111; color: #fff; }
+    .btn.ghost { background: #f3f3f3; }
+    .total { font-size: 28px; font-weight: 800; margin: 8px 0 0; }
+    .breakdown { white-space: pre-wrap; background: #fafafa; border: 1px solid #eee; padding: 10px; border-radius: 10px; margin-top: 10px; font-size: 13px; }
+    .fine { color: #666; font-size: 12px; margin-top: 10px; }
+    @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Instant Delivery Quote</h1>
+  <p class="sub">Charlotte & Southeast regional courier pricing (customer rates)</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Vehicle</label>
+          <select id="vehicle">
+            <option value="van">Cargo Van</option>
+            <option value="box">Box Truck</option>
+          </select>
+        </div>
+        <div>
+          <label>Distance (miles)</label>
+          <input id="miles" type="number" min="1" step="1" value="25" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <div>
+          <label>Weight Class (used for distances ≤ 100 miles)</label>
+          <select id="weight"></select>
+        </div>
+        <div>
+          <label>Dedicated route discount</label>
+          <select id="dedicated">
+            <option value="0">None</option>
+            <option value="0.05">2–3 runs/week (5%)</option>
+            <option value="0.10">4–5 runs/week (10%)</option>
+            <option value="0.15">Daily route (15%)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="checks" style="margin-top:14px;">
+        <label><input type="checkbox" id="driverLoad"> Driver load or unload (+$50)</label>
+        <label><input type="checkbox" id="driverAssist"> Full driver assist / hand load (+$75)</label>
+        <label><input type="checkbox" id="liftgate"> Liftgate (+$50)</label>
+        <label><input type="checkbox" id="inside"> Inside delivery (+$35)</label>
+        <label><input type="checkbox" id="stairs"> Stairs / elevator handling (+$35)</label>
+        <label><input type="checkbox" id="afterHours"> After-hours / weekend (+$65)</label>
+        <label><input type="checkbox" id="twoMan"> Two-man crew (Box Truck only) (+$95)</label>
+      </div>
+
+      <div class="row" style="margin-top:14px;">
+        <div>
+          <label>Wait time (minutes beyond 15 free)</label>
+          <input id="waitMins" type="number" min="0" step="1" value="0" />
+        </div>
+        <div>
+          <label>Rush / Same-day uplift</label>
+          <select id="rush">
+            <option value="0">No rush</option>
+            <option value="0.20">Rush (+20%)</option>
+            <option value="0.30">Priority rush (+30%)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:14px;">
+        <button class="btn primary" id="calc">Calculate Quote</button>
+        <button class="btn ghost" id="reset">Reset</button>
+      </div>
+
+      <p class="fine">
+        Notes: Flat rates apply up to 100 miles. Per-mile rates apply 101–350 miles. Quotes are estimates and can be adjusted for
+        special handling, multi-stop routing, oversized freight, or site constraints.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 8px;">Your Estimate</h2>
+      <div class="total" id="total">$0</div>
+      <div class="breakdown" id="breakdown">Enter details and click “Calculate Quote”.</div>
+      <div class="fine">
+        Want to capture leads? Add a simple form under this box (name / company / email / pickup city / drop city) and send it to your inbox.
+      </div>
+    </div>
+  </div>
+
+<script>
+  // --- Rate tables (Charlotte & SE customer rates) ---
+  const flatRates = {
+    van: {
+      "0-500":   { "0-25": 95,  "26-50": 145, "51-100": 215 },
+      "501-1000":{ "0-25": 115, "26-50": 170, "51-100": 245 }
+    },
+    box: {
+      "0-1000":    { "0-25": 165, "26-50": 215, "51-100": 295 },
+      "1001-2500": { "0-25": 195, "26-50": 245, "51-100": 325 },
+      "2501-5000": { "0-25": 225, "26-50": 275, "51-100": 355 }
+    }
+  };
+
+  const perMile = {
+    van: [
+      { max: 150, rate: 2.25 },
+      { max: 250, rate: 2.10 },
+      { max: 350, rate: 1.95 }
+    ],
+    box: [
+      { max: 150, rate: 3.00 },
+      { max: 250, rate: 2.85 },
+      { max: 350, rate: 2.65 }
+    ]
+  };
+
+  const accessorials = [
+    { id: "driverLoad",  label: "Driver load/unload", amount: 50 },
+    { id: "driverAssist",label: "Full driver assist", amount: 75 },
+    { id: "liftgate",    label: "Liftgate", amount: 50 },
+    { id: "inside",      label: "Inside delivery", amount: 35 },
+    { id: "stairs",      label: "Stairs/elevator handling", amount: 35 },
+    { id: "afterHours",  label: "After-hours/weekend", amount: 65 }
+  ];
+
+  const weightSelect = document.getElementById("weight");
+  const vehicleSelect = document.getElementById("vehicle");
+
+  function setWeightOptions() {
+    const v = vehicleSelect.value;
+    weightSelect.innerHTML = "";
+    const opts = (v === "van")
+      ? [
+          { val: "0-500", text: "0–500 lbs" },
+          { val: "501-1000", text: "501–1,000 lbs" }
+        ]
+      : [
+          { val: "0-1000", text: "0–1,000 lbs" },
+          { val: "1001-2500", text: "1,001–2,500 lbs" },
+          { val: "2501-5000", text: "2,501–5,000 lbs" }
+        ];
+    opts.forEach(o => {
+      const opt = document.createElement("option");
+      opt.value = o.val; opt.textContent = o.text;
+      weightSelect.appendChild(opt);
+    });
+  }
+
+  function distanceBand(miles) {
+    if (miles <= 25) return "0-25";
+    if (miles <= 50) return "26-50";
+    if (miles <= 100) return "51-100";
+    return null;
+  }
+
+  function perMileRate(vehicle, miles) {
+    const tiers = perMile[vehicle];
+    for (const t of tiers) {
+      if (miles <= t.max) return t.rate;
+    }
+    return null;
+  }
+
+  function money(n) {
+    return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
+  }
+
+  function calcQuote() {
+    const vehicle = vehicleSelect.value;
+    const miles = Math.max(0, Number(document.getElementById("miles").value || 0));
+    const weight = weightSelect.value;
+    const dedicatedPct = Number(document.getElementById("dedicated").value || 0);
+    const rushPct = Number(document.getElementById("rush").value || 0);
+    const waitMins = Math.max(0, Number(document.getElementById("waitMins").value || 0));
+    const twoMan = document.getElementById("twoMan").checked;
+
+    let lines = [];
+    let subtotal = 0;
+
+    if (miles <= 0) {
+      document.getElementById("total").textContent = "$0";
+      document.getElementById("breakdown").textContent = "Please enter a valid distance.";
+      return;
+    }
+
+    if (miles <= 100) {
+      const band = distanceBand(miles);
+      const base = flatRates[vehicle]?.[weight]?.[band];
+      if (!base) {
+        document.getElementById("total").textContent = "$0";
+        document.getElementById("breakdown").textContent = "No matching flat rate found for the selections.";
+        return;
+      }
+      subtotal += base;
+      lines.push(`Base (flat, ${band} miles, ${weight}): ${money(base)}`);
+    } else if (miles <= 350) {
+      const r = perMileRate(vehicle, miles);
+      subtotal += miles * r;
+      lines.push(`Base (${miles} mi @ ${money(r)}/mi): ${money(miles * r)}`);
+    } else {
+      // For >350, you can choose to extend tiers or require manual quote.
+      document.getElementById("total").textContent = "Manual";
+      document.getElementById("breakdown").textContent =
+        "Distance exceeds 350 miles. Please request a custom quote (routes >350 mi often price by lane + deadhead + appointment windows).";
+      return;
+    }
+
+    // Accessorial add-ons
+    for (const a of accessorials) {
+      if (document.getElementById(a.id).checked) {
+        subtotal += a.amount;
+        lines.push(`${a.label}: +${money(a.amount)}`);
+      }
+    }
+
+    // Two-man crew (box only)
+    if (twoMan && vehicle === "box") {
+      subtotal += 95;
+      lines.push(`Two-man crew: +${money(95)}`);
+    } else if (twoMan && vehicle !== "box") {
+      lines.push(`Two-man crew selected (ignored for cargo van).`);
+    }
+
+    // Wait time after 15 mins free: $1.75/min
+    if (waitMins > 0) {
+      const waitFee = waitMins * 1.75;
+      subtotal += waitFee;
+      lines.push(`Wait time: ${waitMins} min x $1.75 = +${money(waitFee)}`);
+    }
+
+    // Dedicated discount applies to subtotal BEFORE rush (common)
+    if (dedicatedPct > 0) {
+      const disc = subtotal * dedicatedPct;
+      subtotal -= disc;
+      lines.push(`Dedicated discount (${(dedicatedPct*100).toFixed(0)}%): -${money(disc)}`);
+    }
+
+    // Rush uplift
+    if (rushPct > 0) {
+      const uplift = subtotal * rushPct;
+      subtotal += uplift;
+      lines.push(`Rush uplift (${(rushPct*100).toFixed(0)}%): +${money(uplift)}`);
+    }
+
+    document.getElementById("total").textContent = money(subtotal);
+    document.getElementById("breakdown").textContent = lines.join("\n");
+  }
+
+  function resetForm() {
+    document.getElementById("miles").value = 25;
+    document.getElementById("dedicated").value = "0";
+    document.getElementById("rush").value = "0";
+    document.getElementById("waitMins").value = 0;
+    ["driverLoad","driverAssist","liftgate","inside","stairs","afterHours","twoMan"].forEach(id => {
+      document.getElementById(id).checked = false;
+    });
+    calcQuote();
+  }
+
+  vehicleSelect.addEventListener("change", () => { setWeightOptions(); calcQuote(); });
+  document.getElementById("calc").addEventListener("click", calcQuote);
+  document.getElementById("reset").addEventListener("click", resetForm);
+
+  setWeightOptions();
+  calcQuote();
+</script>
+</body>
+</html>
